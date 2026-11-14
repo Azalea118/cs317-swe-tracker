@@ -1,4 +1,6 @@
 import React from "react";
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {useNetworkState} from 'expo-network';
 import {
   ActivityIndicator,
   Image,
@@ -31,7 +33,7 @@ const colors = {
 // Presentation only. All session, location and upload state stays in App.js.
 function Screen({ children, centered = false }) {
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={["top", "right", "bottom", "left"]}>
       <StatusBar barStyle="dark-content" />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -47,12 +49,12 @@ function Screen({ children, centered = false }) {
           bounces={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          contentInsetAdjustmentBehavior="automatic"
+          contentInsetAdjustmentBehavior="never"
         >
           <View style={styles.content}>{children}</View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -122,7 +124,7 @@ export function TrackerLogin({
       <View style={styles.card}>
         <View style={styles.loginIntro}>
           <Text style={styles.title} accessibilityRole="header">Sign in</Text>
-          <Text style={styles.body}>Use your tracker account.</Text>
+          <Text style={styles.body}>Use the account provided by HR.</Text>
         </View>
 
         <View style={styles.field}>
@@ -197,16 +199,30 @@ export function TrackerLogin({
           <Text style={styles.primaryButtonText}>{busy ? "Signing in…" : "Sign in"}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.signinHelp}>Need access? Ask your administrator.</Text>
+        <Text style={styles.signinHelp}>Need access? Ask HR for your username and password.</Text>
       </View>
     </Screen>
   );
 }
 
-export function TrackingScreen({ username, deviceId, isTracking, statusText, busy, toggleTracking, logout }) {
+export function TrackingScreen({ username, isTracking, statusText, busy, signingOut = false, toggleTracking, logout, photoContent }) {
+  const network = useNetworkState();
+  const connection = network.isConnected === false || network.isInternetReachable === false
+    ? 'Offline' : network.isConnected === true ? 'Online' : 'Checking';
   return (
-    <Screen centered>
+    <Screen>
       <Brand />
+      <View style={styles.accountHeader}>
+        <View style={styles.headerIdentity}>
+          <Text style={styles.detailLabel}>Signed in as</Text>
+          <Text style={styles.headerName} selectable>{username}</Text>
+        </View>
+        <View style={[styles.connectionBadge, connection === 'Online' ? styles.onlineBadge : styles.offlineBadge]}
+          accessible accessibilityLabel={`Connection: ${connection}`} accessibilityLiveRegion="polite">
+          <View accessible={false} style={[styles.connectionDot, {backgroundColor: connection === 'Online' ? '#26745d' : '#946000'}]} />
+          <Text style={[styles.connectionText, {color: connection === 'Online' ? '#175637' : '#694900'}]}>{connection}</Text>
+        </View>
+      </View>
       <View style={[styles.trackingCard, isTracking && styles.trackingCardActive]}>
         <View style={styles.statusOverview}>
           <LocationMark active={isTracking} />
@@ -232,18 +248,9 @@ export function TrackingScreen({ username, deviceId, isTracking, statusText, bus
         </TouchableOpacity>
         {!!statusText && <Text style={styles.statusHint} accessibilityLiveRegion="polite">{statusText}</Text>}
 
-        <View style={styles.deviceDetails}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Signed in as</Text>
-            <Text style={styles.accountName} selectable>{username}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Device ID</Text>
-            <Text style={styles.deviceId} selectable>{deviceId}</Text>
-          </View>
-        </View>
       </View>
 
+      {photoContent}
       <Text style={styles.trackingTip}>Keep location access and internet on.</Text>
       <TouchableOpacity
         style={[styles.signoutButton, busy && styles.disabled]}
@@ -251,23 +258,30 @@ export function TrackingScreen({ username, deviceId, isTracking, statusText, bus
         disabled={busy}
         activeOpacity={0.7}
         accessibilityRole="button"
-        accessibilityLabel={busy ? "Signing out" : "Sign out"}
-        accessibilityState={{ disabled: busy, busy }}
+        accessibilityLabel={signingOut ? "Signing out" : "Sign out"}
+        accessibilityState={{ disabled: busy, busy: signingOut }}
       >
-        {busy && <ActivityIndicator color={colors.red} />}
-        <Text style={styles.signoutText}>{busy ? "Signing out…" : "Sign out"}</Text>
+        {signingOut && <ActivityIndicator color={colors.red} />}
+        <Text style={styles.signoutText}>{signingOut ? "Signing out…" : "Sign out"}</Text>
       </TouchableOpacity>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  accountHeader: {flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', columnGap: 12, rowGap: 10, marginBottom: 14},
+  headerIdentity: {flexGrow: 1, flexShrink: 1, flexBasis: 170, gap: 2},
+  headerName: {fontSize: 21, lineHeight: 29, fontWeight: '700', color: colors.navy},
+  connectionBadge: {flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 12, marginLeft: 'auto', flexShrink: 0},
+  onlineBadge: {backgroundColor: '#e7f5ed'}, offlineBadge: {backgroundColor: '#fff5dd'},
+  connectionDot: {width: 10, height: 10, borderRadius: 5},
+  connectionText: {fontSize: 15, lineHeight: 22, fontWeight: '700'},
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 16,
-    paddingTop: (Platform.OS === "android" ? StatusBar.currentHeight || 24 : Platform.OS === "ios" ? 44 : 0) + 12,
+    paddingTop: 12,
     paddingBottom: 24,
   },
   centeredContent: { justifyContent: "center" },

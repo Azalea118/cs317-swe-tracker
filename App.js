@@ -1,3 +1,5 @@
+import {startPhotoSync} from './frontend/ui/photo-queue';
+import PhotoUpload from './frontend/ui/PhotoUpload';
 import React, { useState, useEffect } from "react";
 import { Platform } from "react-native";
 import {
@@ -128,6 +130,8 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 
 // ---------- UI ----------
 export default function App() {
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [employeeName, setEmployeeName] = useState("");
   const [ready, setReady] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
@@ -137,6 +141,8 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => startPhotoSync(), []);
 
   // On open: load saved values, check the session, ask for permissions
   useEffect(() => {
@@ -237,6 +243,8 @@ export default function App() {
       await clearToken();
       await AsyncStorage.removeItem(QUEUE_KEY); // don't send old points under a new login
       setIsTracking(false);
+      setEmployeeName("");
+      setPhotoBusy(false);
       setLoggedIn(false);
       setLoginError("");
     } finally {
@@ -293,11 +301,12 @@ export default function App() {
 
   return (
     <TrackingScreen
-      username={username}
-      deviceId={DEVICE_ID}
+      username={employeeName || username}
+      photoContent={<PhotoUpload baseUrl={normalizeBase(serverUrl)} getToken={getToken} onBusyChange={setPhotoBusy} onIdentity={setEmployeeName} />}
       isTracking={isTracking}
       statusText={statusText}
-      busy={busy}
+      busy={busy || photoBusy}
+      signingOut={busy}
       toggleTracking={toggleTracking}
       logout={logout}
     />

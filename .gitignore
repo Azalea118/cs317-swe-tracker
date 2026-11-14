@@ -39,3 +39,12 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+*.backup-*
+tsconfig.backup-*.json
+tsconfig.before-phase2-*.json
+*.apk
+*.aab
+.env
+.env.*
+!.env.example
+credentials.json
