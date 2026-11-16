@@ -1,3 +1,6 @@
+import {filterGpsFixes} from './frontend/ui/gps-quality';
+import {startPhotoSync} from './frontend/ui/photo-queue';
+import PhotoUpload from './frontend/ui/PhotoUpload';
 import React, { useState, useEffect } from "react";
 import { Platform } from "react-native";
 import {
@@ -25,6 +28,8 @@ const USER_KEY = "tracker_username";
 const URL_KEY = "server_url";
 const MAX_QUEUE = 5000;
 let flushing = false;
+let gpsWrites = Promise.resolve();
+const GPS_ANCHOR_KEY = 'northpoint_gps_anchor_v1';
 
 // ---------- helpers ----------
 
@@ -113,21 +118,26 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     return;
   }
 
-  const points = data.locations
-    .filter((l) => l.coords.accuracy != null && l.coords.accuracy <= 25)
-    .map((l) => ({
-      lat: l.coords.latitude,
-      lon: l.coords.longitude,
-      acc: l.coords.accuracy,
-      ts: Math.floor(l.timestamp / 1000),
-    }));
-
-  if (points.length) await enqueue(points);
+  // Serialize callbacks so the accepted anchor and persisted queue stay ordered.
+  const job = gpsWrites.then(async () => {
+    if (await getToken() !== token) return;
+    const scope = normalizeBase(await AsyncStorage.getItem(URL_KEY)) + ':' + (await AsyncStorage.getItem(USER_KEY));
+    const saved = JSON.parse((await AsyncStorage.getItem(GPS_ANCHOR_KEY)) || 'null');
+    const result = filterGpsFixes(data.locations || [], saved?.scope === scope ? saved.anchor : null);
+    if (result.points.length) {
+      await enqueue(result.points);
+      await AsyncStorage.setItem(GPS_ANCHOR_KEY, JSON.stringify({scope,anchor:result.anchor}));
+    }
+  });
+  gpsWrites = job.catch(() => {});
+  await job;
   await flushQueue();
 });
 
 // ---------- UI ----------
 export default function App() {
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [employeeName, setEmployeeName] = useState("");
   const [ready, setReady] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
@@ -137,6 +147,8 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => startPhotoSync(), []);
 
   // On open: load saved values, check the session, ask for permissions
   useEffect(() => {
@@ -234,9 +246,13 @@ export default function App() {
           () => {},
         );
       }
+      await gpsWrites;
       await clearToken();
+      await AsyncStorage.removeItem(GPS_ANCHOR_KEY);
       await AsyncStorage.removeItem(QUEUE_KEY); // don't send old points under a new login
       setIsTracking(false);
+      setEmployeeName("");
+      setPhotoBusy(false);
       setLoggedIn(false);
       setLoginError("");
     } finally {
@@ -293,11 +309,12 @@ export default function App() {
 
   return (
     <TrackingScreen
-      username={username}
-      deviceId={DEVICE_ID}
+      username={employeeName || username}
+      photoContent={<PhotoUpload baseUrl={normalizeBase(serverUrl)} getToken={getToken} onBusyChange={setPhotoBusy} onIdentity={setEmployeeName} />}
       isTracking={isTracking}
       statusText={statusText}
-      busy={busy}
+      busy={busy || photoBusy}
+      signingOut={busy}
       toggleTracking={toggleTracking}
       logout={logout}
     />
